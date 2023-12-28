@@ -1,0 +1,166 @@
+---
+title: "E9"
+output: html_document
+date: "2023-11-16"
+---
+
+
+Librerias
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(dplyr)
+library(pROC)
+```
+
+
+
+
+
+
+1 Definir la semilla a utilizar, que corresponde a los últimos cuatro dígitos del RUN (sin considerar el dígito verificador) del integrante de mayor edad del equipo.
+
+```{r}
+set.seed(7339)
+
+```
+
+2 Seleccionar una muestra de 90 mujeres (si la semilla es un número par) o 90 hombres (si la semilla es impar), asegurando que la mitad tenga estado nutricional “sobrepeso” y la otra mitad “no sobrepeso” en cada caso. Dividir esta muestra en dos conjuntos: 
+  los datos de 60 personas (30 con EN “sobrepeso”) para utilizar en la construcción de los modelos y 30 personas (15 con EN “sobrepeso”) para poder evaluarlos.
+```{r}
+datos <- read.csv2("EP09 Datos.csv", header = TRUE, sep = ";")
+# Se agrega la variable IMC como una columna más que es el resultado de la variable peso dividida por el cuadrado de la estatura
+datos$IMC <- datos$Weight/(datos$Height/100)^2
+# Se agrega la variable EN como una columna más donde es una varaible dicotómica siendo sobrepeso si IMC >= 25 y no sobrepeso si IMC < 25
+datos$EN <- ifelse(datos$IMC >= 25, "Sobrepeso", "No sobrepeso")
+
+# Se selecciona una muestra de 90 hombres donde se asegura que la mitad tenga estado nutricional "sobrepeso" y la otra mitad "no sobrepeso"
+# Se eligen primero los 45 hombres con sobrepeso de manera aleatoria
+hombres_sobrepeso <- datos %>% filter(EN == "Sobrepeso")
+hombres_sobrepeso <- hombres_sobrepeso[sample(nrow(hombres_sobrepeso), 45),]
+# Se eligen los 45 hombres sin sobrepeso de manera aleatoria
+hombres_no_sobrepeso <- datos %>% filter(EN == "No sobrepeso")
+hombres_no_sobrepeso <- hombres_no_sobrepeso[sample(nrow(hombres_no_sobrepeso), 45),]
+
+# Se toman 30 hombres con sobrepeso de manera aleatoria 
+hombres_30_sobrepeso <- hombres_sobrepeso[sample(nrow(hombres_sobrepeso), 30),]
+# Se toman 15 hombres con sobrepeso de manera aleatoria
+hombres_15_sobrepeso <- hombres_sobrepeso[sample(nrow(hombres_sobrepeso), 15),]
+
+# Se toman 30 hombres sin sobrepeso de manera aleatoria
+hombres_30_no_sobrepeso <- hombres_no_sobrepeso[sample(nrow(hombres_no_sobrepeso), 30),]
+# Se toman 15 hombres sin sobrepeso de manera aleatoria
+hombres_15_no_sobrepeso <- hombres_no_sobrepeso[sample(nrow(hombres_no_sobrepeso), 15),]
+
+# Se unen los 30 hombres con sobrepeso y los 30 hombres sin sobrepeso
+hombres_60 <- rbind(hombres_30_sobrepeso, hombres_30_no_sobrepeso)
+# Se unen los 15 hombres con sobrepeso y los 15 hombres sin sobrepeso
+hombres_30 <- rbind(hombres_15_sobrepeso, hombres_15_no_sobrepeso)
+```
+
+3 Recordar las ocho posibles variables predictoras seleccionadas de forma aleatoria en el ejercicio anterior.
+```{r}
+# Las ocho variables seleccionadas de forma aleatoria en el ejercicio anterior fueron:
+#"Thigh.Girth" "Ankles.diameter" "Navel.Girth" "Shoulder.Girth" "Knees.diameter" "Elbows.diameter" "Chest.diameter" "Bitrochanteric.diameter"    
+variables_selecionadas <- c("Thigh.Girth", "Ankles.diameter", "Navel.Girth", "Shoulder.Girth", "Knees.diameter", "Elbows.diameter", "Chest.diameter", "Bitrochanteric.diameter")
+
+```
+
+
+4 Seleccionar, de las otras variables, una que el equipo considere que podría ser útil para predecir la clase EN, justificando bien esta selección.
+```{r}
+# Se sacan las columnas que coincidan con las varibales seleccionadas
+datos_filt_sin_variables <- hombres_60 %>% select(-variables_selecionadas)
+
+# Imprimo unicamente las variables que no fueron seleccionadas
+names(datos_filt_sin_variables)
+
+# Se selecciona la variable circurferencia del pecho "Chest.Girth" ya que se considera que puede ser útil para predecir la clase EN ya que se considera que las personas con sobrepeso tienen una mayor circurferencia del pecho
+```
+
+5 Usando el entorno R y paquetes estándares1, construir un modelo de regresión logística con el predictor seleccionado en el paso anterior y utilizando de la muestra obtenida.
+```{r}
+# Se construye un modelo de regresión logística con la variable Chest.Girth como predictor
+# Convertir 'Sobrepeso' a 1 y 'No sobrepeso' a 0 en la variable EN
+datos_filt_sin_variables$EN <- ifelse(datos_filt_sin_variables$EN == "Sobrepeso", 1, 0)
+
+# Ajustar el modelo de regresión logística con la variable Chest.Girth como predictor
+modelo <- glm(EN ~ Chest.Girth, data = datos_filt_sin_variables, family = "binomial")
+summary(modelo)
+```
+
+6 Usando herramientas estándares1 para la exploración de modelos del entorno R, buscar entre dos y cinco predictores de entre las variables seleccionadas al azar, recordadas en el punto 3, para agregar al modelo obtenido en el paso 5.
+```{r}
+# Variables predictoras restantes
+variables_restantes <- setdiff(names(datos_filt_sin_variables), c("EN", "Chest.Girth"))
+
+# Generar todas las combinaciones de dos predictores adicionales
+combinaciones_dos_predictores <- combn(variables_restantes, 2, simplify = TRUE)
+
+# Modelo base con un solo predictor 'Chest.Girth'
+mejor_modelo <- modelo
+mejor_aic <- AIC(modelo)
+mejor_predictores <- c("Chest.Girth")
+
+# Iterar a través de todas las combinaciones de dos predictores
+for (i in 1:ncol(combinaciones_dos_predictores)) {
+  predictors <- c("Chest.Girth", combinaciones_dos_predictores[, i])
+  
+  # Construir el modelo con la combinación actual de predictores
+  temp_modelo <- glm(EN ~ ., data = datos_filt_sin_variables[, c("EN", predictors)], family = "binomial", control = list(maxit = 100))
+  
+  # Verificar si el nuevo modelo tiene un AIC menor que el mejor modelo actual
+  if (AIC(temp_modelo) < mejor_aic) {
+    mejor_modelo <- temp_modelo
+    mejor_aic <- AIC(temp_modelo)
+    mejor_predictores <- predictors
+  }
+}
+
+# Resumen del mejor modelo encontrado con dos predictores adicionales
+cat("Mejor modelo con dos predictores adicionales:", paste(mejor_predictores, collapse = ", "), "\n")
+summary(mejor_modelo)
+```
+
+7 Evaluar la confiabilidad de los modelos (i.e. que tengan un buen nivel de ajuste y son generalizables) y “arreglarlos” en caso de que tengan algún problema.
+```{r}
+# Predecir las probabilidades de clasificación para el modelo original
+predicciones_modelo <- predict(modelo, type = "response")
+
+# Calcular la curva ROC y su AUC para el modelo original
+curva_roc_modelo <- roc(datos_filt_sin_variables$EN, predicciones_modelo)
+auc_resultado_modelo <- auc(curva_roc_modelo)
+
+# Graficar la curva ROC para el modelo original
+plot(curva_roc_modelo, col = "blue", main = "Curva ROC - Modelo Original")
+abline(a = 0, b = 1, lty = 2, col = "red")
+legend("bottomright", legend = paste("AUC =", round(auc_resultado_modelo, 3)), col = "blue", lty = 1)
+
+# Calcular y mostrar la sensibilidad y especificidad con un umbral óptimo para el modelo original
+optimal_modelo <- coords(curva_roc_modelo, "best", ret = "threshold", transpose = TRUE)
+
+# Predecir las probabilidades de clasificación para el mejor modelo
+predicciones_mejor_modelo <- predict(mejor_modelo, type = "response")
+
+# Calcular la curva ROC y su AUC para el mejor modelo
+curva_roc_mejor_modelo <- roc(datos_filt_sin_variables$EN, predicciones_mejor_modelo)
+auc_resultado_mejor_modelo <- auc(curva_roc_mejor_modelo)
+
+# Graficar la curva ROC para el mejor modelo
+plot(curva_roc_mejor_modelo, col = "blue", main = "Curva ROC - Mejor Modelo")
+abline(a = 0, b = 1, lty = 2, col = "red")
+legend("bottomright", legend = paste("AUC =", round(auc_resultado_mejor_modelo, 3)), col = "blue", lty = 1)
+
+# Calcular y mostrar la sensibilidad y especificidad con un umbral óptimo para el mejor modelo
+optimal_mejor_modelo <- coords(curva_roc_mejor_modelo, "best", ret = "threshold", transpose = TRUE)
+```
+Como se puede apreciar, en ambos modelos la curva ROC se aleja bastante de la diagonal, por lo que son buenos modelos.
+El primer modelo era mejorable, pero tras agregar dos variables predictoras más, mejoró bastante, por lo que el problema de arreglar el modelo ya se solucionó
+
+
+8 Usando código estándar1, evaluar el poder predictivo de los modelos con los datos de las 40 personas que no se incluyeron en su construcción en términos de sensibilidad y especificidad.
+```{r}
+
+```
+

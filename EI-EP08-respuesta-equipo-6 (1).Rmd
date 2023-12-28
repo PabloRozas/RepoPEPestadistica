@@ -1,0 +1,288 @@
+---
+title: "EI-EP08-respuesta-equipo-6"
+author: "Grupo 6"
+date: "2023-11-07"
+output: html_document
+---
+
+# Ejercicio práctico 8
+
+```{r}
+# Datos
+library(tidyverse)
+library(ggpubr)
+
+datos <- read.csv2("EP08 Datos CASEN 2017.csv", sep = ";", fileEncoding = "latin1")
+```
+
+## Pregunta n°1
+
+La cantidad de hogares de la región de Tarapacá en que algún miembro de la familia posee un auto particular ¿ Es la misma entre las familias con un padre o madre con estudios profesionales o que nunca asistieron?
+
+```{r}
+set.seed(234)
+# Obtención de los datos
+# Filtro por region de Tarapaca
+tarapaca <- datos %>% filter(region == "Región de Tarapacá")
+# Seleccion de columnas de interes
+tarapaca <- tarapaca %>% select(r14, r12b, r12a)
+# Filtro para para respuestas de interes
+tarapaca <- tarapaca %>% filter(r14 == "Sí" | r14 == "No")
+# Filtro para para respuestas de interes
+tarapaca <- tarapaca %>% filter(r12b == "Profesional (carrera de 4 ó más años)" | r12b == "Nunca asistió")
+# Filtro para para respuestas de interes
+tarapaca <- tarapaca %>% filter(r12a == "Profesional (carrera de 4 ó más años)" | r12a == "Nunca asistió")
+# Se toman 125 muestras
+tarapaca <- tarapaca %>% sample_n(150)
+
+auto <- tarapaca %>% filter(r14 == "Sí" | r14 == "No")
+
+nunca <- auto %>% filter(r12b == "Nunca asistió" | r12a == "Nunca asistió")
+
+profesional <- auto %>% filter(r12b == "Profesional (carrera de 4 ó más años)" | r12a == "Profesional (carrera de 4 ó más años)")
+
+# comportamiento de datos por chi cuadrado
+
+
+
+# Crear una nueva columna 'NivelEducativo' que indique si es técnico o profesional
+auto <- auto %>%
+  mutate(NivelEducativo = case_when(
+    r12b == "Nunca asistió" | r12a == "Nunca asistió" ~ "Nunca asistió",
+    r12b == "Profesional (carrera de 4 ó más años)" | r12a == "Profesional (carrera de 4 ó más años)" ~ "Profesional",
+    TRUE ~ NA_character_ # Excluimos otras respuestas
+  )) %>%
+  filter(!is.na(NivelEducativo)) # Filtramos las NA
+
+# Ahora creamos la tabla de contingencia
+tabla <- with(auto, table(Auto = r14, Educacion = NivelEducativo))
+
+# Realizamos la prueba de chi-cuadrado
+test_chi <- chisq.test(tabla)
+
+# Ver los resultados
+print(test_chi)
+
+
+library(ggplot2)
+# ggplot(auto, aes(x = NivelEducativo, fill = r14)) +
+#  geom_bar(position = "fill") +
+#  labs(y = "Proporción", x = "Nivel Educativo", fill = "Posee Auto") +
+#  theme_minimal()
+
+print(addmargins(table(auto$r14, auto$NivelEducativo)))
+```
+
+```{r}
+# Montecarlo
+
+# hipotesis
+
+# h0: La proporción de dueños de autos es la misma en los hogares en que el padre o la madre poseen educación      profesional o nunca asistieron a la educación formal.
+# ha: La proporción de dueños de autos no es la misma en los hogares en que el padre o la madre poseen             educación profesional o nunca asistieron a la educación formal.
+
+# muestras
+nunca_col <- nunca$r14
+profesional_col <- profesional$r14
+
+nunca_num <- as.numeric(nunca_col == "Sí") # Convierte a numérico: "Sí" será 1, "No" será 0
+profesional_num <- as.numeric(profesional_col == "Sí") # Convierte a numérico: "Sí" será 1, "No" será 0
+
+
+# permutaciones
+
+obtiene_permutacion <- function(i, muestra_1, muestra_2) {
+  n_1 <- length(muestra_1)
+  combinada <- c(muestra_1, muestra_2)
+  n <- length(combinada)
+  permutacion <- sample(combinada, n, replace = FALSE)
+  nueva_1 <- permutacion[1:n_1]
+  nueva_2 <- permutacion[(n_1 + 1):n]
+  return(list(nueva_1, nueva_2))
+}
+
+# Generar permutaciones .
+permutaciones <- lapply(1:3999, obtiene_permutacion, nunca_num, profesional_num)
+
+diferencias_de_proporciones <- sapply(permutaciones, function(permutacion) {
+  nueva_1 <- permutacion[[1]]
+  nueva_2 <- permutacion[[2]]
+  prop_1 <- sum(nueva_1) / length(nueva_1)
+  prop_2 <- sum(nueva_2) / length(nueva_2)
+  return(prop_1 - prop_2)
+})
+
+
+observaciones <- data.frame(diferencias_de_proporciones)
+g <- gghistogram(observaciones, x = "diferencias_de_proporciones", bins = 30, fill = "blue")
+g
+
+
+calcular_valor_p <- function(distribucion, valor_observado, repeticiones) {
+  numerador <- sum(abs(distribucion) > abs(valor_observado)) + 1
+  denominador <- repeticiones + 1
+  valor_p <- numerador / denominador
+}
+prop_obs1 <- sum(nunca_num) / length(nunca_num)
+prop_obs2 <- sum(profesional_num) / length(profesional_num)
+prop_obs <- prop_obs1 - prop_obs2
+
+p_value <- calcular_valor_p(observaciones, prop_obs, 3999)
+```
+
+Conclusión Dado el p-value calculado por el método de Monte Carlo, se puede concluir con un 95% de confianza que la proporción entre hogares en que el padre o madre que poseen estudios profesionales y que nunca asistieron a la educación formal, no es la misma cuando se trata de ser dueño de un auto particular.
+
+# Pregunta n°2
+
+La edad promedio ¿ Es similar para aquellas personas con estado civil Casado, Separado o Soltero?
+
+## Hipótesis
+
+$$
+H_{0}: \text{La edad promedio de aquellas personas que tienen estado civil soltero, casado o separado es la misma.}
+$$
+
+$$
+H_{a}: \text{La edad promedio para aquellas personas que tienen estado civil soltero, casado o separado difiere para al menos un grupo}
+$$
+
+## Estadístico de interés
+
+El estadístico de interés escogido corresponderá al estadistico F, esto pues, se desea determinar si la edad media de cada estado civil es la misma o no.
+
+## Remuestreo
+
+Librerias   
+```{r}
+set.seed(691)
+library(tidyverse)
+library(ggpubr)
+library(boot)
+
+```
+
+Preparación de datos
+```{r}
+datos <- read.csv2("EP08 Datos CASEN 2017.csv", sep = ";", fileEncoding = "latin1")
+separados <- datos %>% filter(ecivil == "Separado(a)")
+casados <- datos %>% filter(ecivil == "Casado(a)")
+solteros <- datos %>% filter(ecivil == "Soltero(a)")
+
+get_sample_hogares <- function(data) {
+
+  data %>%
+    group_by(id.vivienda) %>%
+    summarise(edad = first(edad), .groups = 'drop') %>%
+    sample_n(299)
+}
+
+separados_sample <- get_sample_hogares(separados)
+casados_sample <- get_sample_hogares(casados)
+  solteros_sample <- get_sample_hogares(solteros)
+
+separados_edades <- separados_sample$edad
+casados_edades <- casados_sample$edad
+solteros_edades <- solteros_sample$edad
+
+instancia <- factor(1:299)
+
+datos_anchos <- data.frame(instancia,separados_edades, casados_edades, solteros_edades)
+
+datos_largos <- datos_anchos %>% pivot_longer (c("separados_edades", "casados_edades", "solteros_edades") ,
+names_to = "ecivil",
+ values_to = "edad")
+
+datos_largos [["ecivil"]] <- factor(datos_largos[["ecivil"]])
+
+datos_filtrados <- datos_largos
+```
+
+Se ajustan los datos para obtener una distribución que se asemeje a la distribución de la hipotesis nula.
+```{r} 
+datos_originales_filtrados <- datos_filtrados
+# Se obtiene la varianza y la media de la muestra original
+varianza_original <- var(datos_filtrados$edad)
+media_original <- mean(datos_filtrados$edad)
+
+# Se obtiene la varianza y la media por cada grupo (ecivil)
+varianza_grupo <- datos_filtrados %>% group_by(ecivil) %>% summarise(varianza = var(edad), media = mean(edad))
+
+obtener_ajuste <- function(datos, varianza_original, varianza_grupo, media_original){
+  edad <- as.numeric(datos[3])
+  
+  if (datos[2] == "casados_edades")
+  {
+    return(media_original + (edad - varianza_grupo$media[1])* (sqrt(varianza_original)/sqrt(varianza_grupo$varianza[1])))
+  }
+  else if (datos[2] == "separados_edades")
+  {
+    return(media_original + (edad - varianza_grupo$media[2])* (sqrt(varianza_original)/sqrt(varianza_grupo$varianza[2])))
+  }
+  else if (datos[2] == "solteros_edades")
+  {
+    return(media_original + (edad - varianza_grupo$media[3])* (sqrt(varianza_original)/sqrt(varianza_grupo$varianza[3])))
+  }
+}
+
+# Se aplica la funcion a cada uno de los valores de la muestra
+datos_filtrados$edad <- apply(datos_filtrados, 1, obtener_ajuste, varianza_original, varianza_grupo, media_original)
+```
+
+Luego se calcula el estadistico F para la muestra original el cual se usará para coomparar con los estadisticos F de las muestras bootstrap. Además se hace un diagrama de cajas para la muestra original y la muestra luego del ajuste.
+```{r}
+# Se obtiene el estadistico F de la muestra original\
+muestra_original <- aov(edad ~ ecivil, data = datos_originales_filtrados)
+print(summary(muestra_original))
+print(summary(muestra_original)[[1]]$`F value`[1])
+
+# Se hace el diagrama de cajas de la muestra observada
+g <- ggplot(datos_originales_filtrados, aes(x = ecivil, y = edad)) +
+  geom_boxplot(fill = "blue") +
+  labs(x = "Estado Civil", y = "Edad", title = "Diagrama de cajas de la muestra observada") +
+  theme_minimal()
+plot(g)
+
+g <- ggplot(datos_filtrados, aes(x = ecivil, y = edad)) +
+  geom_boxplot(fill = "blue") +
+  labs(x = "Estado Civil", y = "Edad", title = "Diagrama de cajas de la muestra observada") +
+  theme_minimal()
+plot(g)
+
+
+obtiene_estadistico <- function(data, indices){
+  muestra <- data[indices, ]
+
+  anova_result <- aov(edad ~ ecivil, data = muestra)
+
+  return(summary(anova_result)[[1]]$`F value`[1])
+}
+R = 10009
+result_boot <- boot(datos_filtrados, obtiene_estadistico, R)
+
+# Se hace el histograma
+g <- ggplot(data.frame(result_boot$t), aes(x = result_boot$t)) +
+  geom_histogram(binwidth = 0.5, fill = "blue", color = "black") +
+  labs(x = "Valor F", y = "Frecuencia", title = "Histograma de los valores F") +
+  theme_minimal()
+
+# Se agrega al histograma un linea en muestra original
+g <- g + geom_vline(xintercept = summary(muestra_original)[[1]]$`F value`[1], color = "red", size = 1)
+plot(g)
+
+# Se calcula el p-value
+p_value <- (sum(result_boot$t < result_boot$t0) + 1)/ (R + 1)
+print(p_value)
+```
+
+Se puede concluir con un intervalo de canfianza del 95% que se rechaza la hipotesis nula en favor de la hipotesis alternativa, pues el p-value es absurdamente pequeño.
+Por lo tanto, se debe realizar una prueba post hoc para determinar cuales grupos son los que difieren.
+
+```{r}
+# Se realiza la prueba post hoc
+holm <- pairwise.t.test(datos_originales_filtrados$edad, datos_originales_filtrados$ecivil, p.adjust.method = "holm", paired = FALSE, pool.sd = TRUE, conf.level = 0.95)
+print(holm)
+
+```
+
+
+Se concluye que ninguno de los grupos es igual a otro, por lo tanto, se puede concluir que la edad promedio de cada grupo es distinta.

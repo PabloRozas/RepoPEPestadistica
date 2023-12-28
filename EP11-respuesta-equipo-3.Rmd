@@ -1,0 +1,151 @@
+---
+title: "E11"
+output: html_document
+date: "2023-12-04"
+---
+Se agregan las librerias necesarias
+```{r warning=FALSE, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(leaps)
+library(caret)
+library(boot)
+```
+
+1 Definir la semilla a utilizar, que corresponde a los primeros cinco dígitos del RUN del integrante de mayor edad del equipo.
+```{r warning=FALSE}
+set.seed(20557)
+```
+
+2 Seleccionar una muestra de 100 personas, asegurando que la mitad tenga estado nutricional “sobrepeso” y la otra mitad “no sobrepeso”.
+```{r warning=FALSE}
+datos <- read.csv("EP09 Datos.csv", sep = ";", dec = ",")
+
+# Se calcula el IMC de cada persona
+datos$IMC <- datos$Weight / (datos$Height / 100)**2
+
+# Se calcula el estado nutricional de cada persona (sobrepeso si es mayor o igual a 25, no sobrepeso si es menor a 25)
+datos$EN <- ifelse(datos$IMC >= 25, "Sobrepeso", "No sobrepeso")
+
+# Se filtran por personas con y sin sobrepeso según EN
+datos_sobrepeso <- datos %>% filter(EN == "Sobrepeso")
+datos_no_sobrepeso <- datos %>% filter(EN == "No sobrepeso")
+
+# Se seleccionan 50 personas con sobrepeso y 50 personas sin sobrepeso de manera aleatoria
+datos_sobrepeso <- datos_sobrepeso[sample(nrow(datos_sobrepeso), 50), ]
+datos_no_sobrepeso <- datos_no_sobrepeso[sample(nrow(datos_no_sobrepeso), 50), ]
+
+# Se unen los dos grupos de personas
+datos_filtrados <- rbind(datos_sobrepeso, datos_no_sobrepeso)
+```
+
+3 Usando las herramientas del paquete leaps, realizar una búsqueda exhaustiva para seleccionar entre dos y ocho predictores que ayuden a estimar la variable Peso (Weight), obviamente sin considerar las nuevas variables IMC ni EN, y luego utilizar las funciones del paquete caret para construir un modelo de regresión lineal múltiple con los predictores escogidos y evaluarlo usando bootstrapping.
+
+Se define nvmax = 8 para que se consideren hasta 8 variables en el modelo, nbest = 2 para que se consideren los 2 mejores modelos y method = "exhaustive" para que se haga una busqueda exhaustiva de los modelos.
+```{r warning=FALSE}
+# Seleccionar el conjunto de datos sin las columnas IMC y EN
+datos_aux <- datos_filtrados %>% select(-c(IMC, EN))
+
+# Obtener los modelos con el método regsubsets
+modelos <- regsubsets(Weight ~ ., data = datos_aux, nvmax = 8, method = "exhaustive", nbest = 2)
+
+# Obtener el resumen del modelo
+model_summary <- summary(modelos)
+
+# Obtener las variables seleccionadas por el mejor modelo
+best_model_index <- which.min(model_summary$bic)
+variables_seleccionadas <- names(coef(modelos, id = best_model_index))
+
+# Mostrar las variables seleccionadas
+print(variables_seleccionadas)
+# Aca se obtienen 7 variables con las cual se utilizara bootstrap
+
+# Se elimina el "(Intercept)" que se imprimia antes
+variables_seleccionadas <- variables_seleccionadas[-1]
+
+# Se filtran las variables seleccionadas más la variable peso (Weight)
+datos_aux <- datos_aux[, c("Weight", variables_seleccionadas)]
+
+# Se evalua el modelo usando bootstrapping con 1999 remuestreos (Se utiliza la función train del paquete caret)
+modelo_exhaustivo <- train(Weight ~ ., data = datos_aux, method = "lm",
+                           trControl = trainControl(method = "boot",
+                                                    number = 1999))
+
+# Mostrar el resultado del modelo
+print(summary(modelo_exhaustivo))
+```
+Se puede ver que el modelo tiene un $R^{2}$ de 0.9772, lo que indica que el modelo es bastante bueno para predecir el peso de una persona.
+
+4 Haciendo un poco de investigación sobre el paquete caret, en particular cómo hacer Recursive Feature Elimination (RFE), construir un modelo de regresión lineal múltiple para predecir la variable IMC que incluya entre 10 y 20 predictores, seleccionando el conjunto de variables que maximice R2 y que use cinco repeticiones de validación cruzada de cinco pliegues para evitar el sobreajuste (obviamente no se debe considerar las variables Peso, Estatura ni estado nutricional –Weight, Height, EN respectivamente).
+```{r warning=FALSE}
+# Eliminar columnas irrelevantes para el análisis del IMC
+datos_procesados <- datos_filtrados %>% select(-c(Weight, Height, EN))
+
+# Definir la variable de respuesta y los predictores
+target_IMC <- datos_procesados[["IMC"]]
+datos_procesados[["IMC"]] <- NULL
+
+# Configurar el control para el método RFE
+control_rfe <- rfeControl(functions = lmFuncs, method = "repeatedcv", number = 5, repeats = 5)
+
+# Realizar Recursive Feature Elimination (RFE) para seleccionar predictores
+modelo_IMC <- rfe(x = datos_procesados, y = target_IMC, sizes = 10:20, rfeControl = control_rfe, metric = "Rsquared")
+
+# Obtener el conjunto de variables seleccionadas por RFE
+variables_seleccionadas_IMC <- modelo_IMC$optVariables
+
+
+# Mostrar las variables seleccionadas por RFE
+print(variables_seleccionadas_IMC)
+
+# Se vuelven a agregar IMC
+datos_procesados <- datos_filtrados %>% select(-c(Weight, Height, EN))
+
+# Entrenar el modelo final usando las variables seleccionadas
+modelo_final <- train(x = datos_procesados[, c( "IMC",variables_seleccionadas_IMC)], y = target_IMC, method = "lm")
+
+# Imprimir el modelo final
+print(summary(modelo_final))
+
+# Visualizar la gráfica de importancia de variables si se desea
+print(plot(modelo_IMC))
+```
+Se puede observar que se obtiene el modelo final en el que se usan las 18 variables seleccionadas por RFE, y se obtiene un $R^{2}$ de 0.9999, lo que indica que el modelo es muy bueno para predecir el IMC de una persona.
+
+5 Usando RFE, construir un modelo de regresión logística múltiple para la variable EN que incluya el conjunto, de entre dos y seis, predictores que entregue la mejor curva ROC y que utilice validación cruzada dejando uno fuera para evitar el sobreajuste (obviamente no se debe considerar las variables Peso, Estatura –Weight y Height respectivamente– ni IMC).
+```{r warning=FALSE}
+# Descartar columnas inútiles para el modelo de regresión logística
+predictores_en <- datos_filtrados %>%
+  select(-c(Weight, Height, IMC, EN))  # Excluir las variables irrelevantes
+
+# Definir la variable de respuesta EN
+EN <- datos_filtrados$EN
+
+# Convertir la variable de respuesta a factor
+EN <- as.factor(EN)
+
+
+# Definir el control para RFE con validación cruzada dejando uno fuera usando lrFuncs que es una lista de funciones para regresión logística
+control_rfe_en <- rfeControl(functions = lrFuncs, method = "LOOCV", number = 1)
+
+# Realizar Recursive Feature Elimination (RFE) para seleccionar predictores
+modelo_en_rfe <- rfe(x = as.matrix(predictores_en), y = EN, sizes = 2:6,
+                     rfeControl = control_rfe_en, metric = "ROC")
+
+# Mostrar el resultado del modelo RFE para EN
+print(modelo_en_rfe)
+
+# Obtener las variables seleccionadas por RFE para EN
+variables_seleccionadas_en <- modelo_en_rfe$optVariables
+
+# Mostrar las variables seleccionadas por RFE para EN
+print(variables_seleccionadas_en)
+```
+
+6 Pronunciarse sobre la confiabilidad y el poder predictivo de los modelos obtenidos.
+
+Para cada uno de los modelos se evaluará su poder predictivo y confiabilidad.
+```{r}
+
+```

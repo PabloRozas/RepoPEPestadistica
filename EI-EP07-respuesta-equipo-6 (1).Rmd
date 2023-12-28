@@ -1,0 +1,285 @@
+---
+title: "EI-EP07-respuesta-equipo-6.Rmd"
+author: "Grupo 6"
+date: "2023-10-17"
+output: html_document
+---
+
+# Enunciado
+
+1.  Observando los datos, la memorista sospecha que hay diferencias significativas en el tiempo de ejecución entre las versiones A y C del algoritmo cuando las instancias tienen 60 o más nodos. ¿Los datos respaldan la intuición de la memorista?\
+    Para responder, filtren los datos para tener las instancias con 60 o más nodos y seleccionen las columnas de los tiempos de ejecución de las versiones A y C en formato ancho. Usando como semilla el valor 33, obtenga muestras aleatorias independientes de 24 tiempos registrados por la versión A y 18 tiempos registrados por la versión C del algoritmo. Realicen un análisis estadístico pertinente (enunciar hipótesis, revisar condiciones, seleccionar prueba) para responder la pregunta planteada, utilizando pruebas no paramétricas de ser necesario.
+
+2.  La memorista también sospecha que, al comparar las mismas instancias de iguales características, las mejores soluciones encontradas por las versiones A y B tienen rendimientos distintos. ¿Estará en lo cierto?\
+    Para responder, filtren los datos para tener las instancias con 60 o más nodos y seleccionen las columnas con el mejor rendimiento de las versiones A y B en formato ancho. Usando como semilla el valor 33, obtengan una muestra aleatoria de 22 instancias. Realicen un análisis estadístico pertinente (enunciar hipótesis, revisar condiciones, seleccionar prueba) para responder la pregunta planteada, utilizando pruebas no paramétricas de ser necesario.
+
+3.  La memorista sospecha que hay diferencias significativas en el tiempo de ejecución entre las versiones del algoritmo cuando las instancias de prueba tienen 45 o más nodos. ¿Los datos respaldan la intuición de la memorista?\
+    Para responder, filtren los datos para tener las instancias con 45 o más nodos y seleccionen las columnas con los tiempos de ejecución registrados (en formato ancho). Usando como semilla el valor 43, obtengan muestras aleatorias independientes de 15, 15 y 14 tiempos registrados por las versiones A, B y C, respectivamente. Realicen un análisis estadístico pertinente (enunciar hipótesis, revisar condiciones, seleccionar prueba) para responder la pregunta planteada, utilizando pruebas no paramétricas de ser necesario.
+
+4.  La memorista también sospecha que, al comparar las mismas instancias con iguales características, las mejores soluciones encontradas por las diferentes versiones del algoritmo tienen rendimientos distintos. ¿Estará en lo cierto?\
+    Para responder, filtren los datos para tener las instancias con 45 o más nodos y seleccionen las columnas con los mejores rendimientos registrados. Usando como semilla el valor 71, obtengan una muestra aleatoria de 23 instancias. Realicen un análisis estadístico pertinente (enunciar hipótesis, revisar condiciones, seleccionar prueba) para responder la pregunta planteada, utilizando pruebas no paramétricas de ser necesario.
+
+# Desarrollo
+
+### Obtención de datos y librerías
+
+```{r}
+library(conflicted)
+library(tidyverse)
+library(ggpubr)
+library(dplyr)
+conflict_prefer("filter", "dplyr")
+datos <- read.csv2("EP07 Datos.csv", sep = ",")
+```
+
+### Pregunta 1
+
+-   Datos y condiciones
+
+    Se plantea en primera instancia utilizar la prueba de sumas de rangos de wilcoxon, por lo que se verificarán las condiciones.
+
+```{r}
+# Datos
+set.seed(33)
+nodos <- datos %>% filter(n.nodos >= 60)
+
+nodosA <- nodos %>% pull(tiempo.A)
+nodosC <- nodos %>% pull(tiempo.C)
+
+
+# Extraemos los datos de tal forma que sean independientes
+indicesA <- sample(length(nodosA), 24)
+muestraA <- nodosA[indicesA]
+muestraC <- nodosC[-indicesA]
+indicesC <- sample(length(muestraC), 18)
+muestraC <- muestraC[indicesC]
+
+alpha <- 0.05
+```
+
+Como se puede observar en el script anterior, ambas muestras son independientes entre sí, es garantizado puesto que extremos extrayendo aquellos valores ya utilizados (-indicesN), lo cual verifica la primera condición para utilizar la prueba antes mencionada. Ahora, puesto que estamos filtrando datos para aquellos valores que tienen más de 60 nodos, podemos decir que la escala de medición es ordinal, cumpliendo así la segunda, y última, condición.
+
+-   Hipótesis
+
+    Dado el enunciado, podemos plantear las siguientes hipótesis:
+
+    $$
+    H_{0}: \text{No existe diferencia en el tiempo de ejecución entre las versiones A y C del algoritmo cuando las instancias tienes 60 o más nodos.}
+    $$
+
+    $$
+    H_{a}: \text{Si existe diferencia en el tiempo de ejecución entre las versiones A y C del algoritmo cuando las instancias tienes 60 o más nodos.}
+    $$
+
+-   Prueba estadística:
+
+```{r}
+
+test <- wilcox.test(muestraA, muestraC, alternative = "two.sided", conf.level = 1 - alpha)
+
+print(test)
+```
+
+-   Conlclusión:
+
+    Como se puede observar en el punto anterior, el resultado de la Prueba de sumas de rangos de Wilcoxon nos entrega un p-value = 0.6417, el cual es mayor al nivel de significancia propuesto, alpha = 0.05. Es por esto que fallamos en rechazar la hipótesis nula, por lo que se concluye con un 95% de confianza que no se puede descartar que no existe diferencia en los tiempos de ejecución, es decir, que los datos no respaldan la intuición de la memorista.
+
+
+### Pregunta 2
+
+-   Filtración de datos y condiciones
+
+    Se filtran los datos para obtener las instancias con 60 o más nodos
+```{r}
+
+nodos_2 <- datos %>% filter(n.nodos >= 60)
+
+```
+
+Ahora se filtran las columnas con los mejores rendimientos de las versiones A y B en formato ancho
+```{r}
+best_times <- nodos_2 %>% select(mejor.A, mejor.B)
+```
+
+Teniendo los datos filtrados, se puede dar cuenta que los datos son independientes entre sí, puesto que son la misma instancia en diferentes algoritmos que no dependen del otro. Además, ya que la escala esta medida en porcentaje, se cumple que es ordinal e intrínsecamente continua.
+Por lo tanto, se puede usar el test de rangos con signo de wilcoxon con las siguientes hipótesis:
+
+-   Hipótesis
+
+    $$
+    H_{0}: \text{No existe diferencia en los mejores tiempos de ejecución entre las versiones A y B del algoritmo cuando las instancias tienen 60 o más nodos.}
+    $$
+
+    $$
+    H_{a}: \text{Si existe diferencia en los mejores tiempos de ejecución entre las versiones A y B del algoritmo cuando las instancias tienen 60 o más nodos.}
+    $$
+
+-   Prueba
+
+Primero se obtendrán 22 instancias aleatorias usando como semilla el valor 33.
+```{r}
+set.seed(33)
+indices_mejorA <- sample(length(best_times$mejor.A), 22)
+indices_mejorB <- sample(length(best_times$mejor.B), 22)
+
+bestA <- as.numeric(best_times$mejor.A[indices_mejorA])
+bestB <- as.numeric(best_times$mejor.B[indices_mejorB])
+
+```
+
+Se establece un nivel de significancia de 0.05
+```{r}
+alpha <- 0.05
+```
+
+Se realiza la prueba de rangos con signo de wilcoxon
+```{r}
+test <- wilcox.test(bestA, bestB, alternative = "greater", paired = TRUE,
+                    conf.level = 1 - alpha)
+print(test)
+```
+
+-   Conclusión
+
+    Se puede notar que en los resultados de la prueba de rangos con signo de wilcoxon que el p-value es 0.0006309, lo cual es menor al nivel de significancia obtenido, por lo que se rechaza la hipótesis nula en favor de la alternativa. Por lo tanto, se concluye que los datos respaldan la intuición de la memorista, es decir, que si existe diferencia en los mejores tiempos de ejecución entre las versiones A y B del algoritmo cuando las instancias tienen 60 o más nodos.
+
+### Pregunta 3
+
+-   Filtro de datos
+
+    Se filtran los datos para las instancias con 45 o más nodos y se seleccionan las columnas con los tiempos de ejecución registrados en formato ancho para los algoritmos A, B y C, luego se seleccionan de manera aleatoria muestras independientes de 15, 15 y 14 respectivamente.
+```{r}
+set.seed(43)
+
+nodos_3 <- datos %>% filter(n.nodos >= 45)
+
+nodosA_3 <- nodos_3 %>% pull(tiempo.A) 
+nodosB_3 <- nodos_3 %>% pull(tiempo.B) 
+nodosC_3<- nodos_3 %>% pull(tiempo.C)
+
+indicesA_3 <- sample(length(nodosA_3), 15) 
+muestraA_3 <- nodosA_3[indicesA_3]
+muestraB_3 <- nodosB_3[-indicesA_3]
+indicesB_3 <- sample(length(muestraB_3), 15)
+muestraB_3 <- nodosB_3[indicesB_3]
+muestraC_3 <- nodosC_3[-indicesB_3]
+indicesC_3 <- sample(length(muestraC_3), 14)
+muestraC_3 <- muestraC_3[indicesC_3]
+
+# probar interseccion
+int <- intersect(muestraA_3, muestraB_3)
+int2 <- intersect(muestraA_3, muestraC_3)
+int3 <- intersect(muestraB_3, muestraC_3)
+
+int
+int2
+int3
+
+alfa <- 0.01
+```
+Condiciones: para la primera condición, ya que estamos en presencia de varios algoritmos, esto se considera como distincion entre niveles de la variable independiente (Tiempo A: nivel x, Tiempo B: nivel y, Tiempo C: nivel Z, que serian 3 niveles) cumpliendo la necesidad de que la variable independiente tenga más de dos niveles, en el caso de la segunda condición esta se refleja en el analisis de los tiempos, ya que se puede tener un orden de los algoritmos dependiendo del tiempo de ejecucion, por lo que no es necesario que los tiempo sean continuos, si no que la relacion de orden es lo que importa y la ultima condición se cumple dado que el script anterior se encarga de seleccionar aquellos datos en cada muestra que no esten en alguna otra muestra.
+
+-   Hipótesis
+
+    Dado el enunciado, podemos plantear las siguiente hipótesis:
+
+    $$
+    H_{0}: \text{No existe diferencia en el tiempo de ejecución entre las versiones A, B y C del algortimo cuando las instancias tienes 45 o más nodos.}
+    $$
+
+    $$
+    H_{a}: \text{Al menos uno de los algoritmos posee una diferencia en tiempo de ejecución, a al menos uno de las otras versiones, cuando se tiene 45 o más nodos.}
+    $$
+    
+-   Prueba estadística:
+
+```{r}
+Tiempo <- c(muestraA_3, muestraB_3, muestraC_3)
+
+Algoritmo <- c(rep("A", length(muestraA_3)), rep("B", length(muestraB_3)), rep("C", length(muestraC_3))) 
+Algoritmo <- factor(Algoritmo)
+
+datos_3 <- data.frame(Tiempo, Algoritmo)
+
+
+prueba <- kruskal.test(Tiempo ~ Algoritmo, data = datos_3) 
+print(prueba)
+
+post_hoc <- pairwise.wilcox.test(datos_3$Tiempo,  datos_3$Algoritmo, p.adjust.method = "holm", paired = FALSE) 
+print(post_hoc)
+```
+-   Conclusión:
+
+    Dado el resultado de la prueba de Kruskal-Wallis de un p-value de 0.01297, se concluye con un 99% de confianza que no existen diferencias en el tiempo de ejecución entre algoritmos (no se rechaza la H0), comprobado adicionalmente por el analisis pos hoc, que de forma similar nos muestra que no existe una diferencia significativa entre cada par de algoritmos, dado que no existe ningun valor menor al 0.01. Es por esto que los resultados no respaldan la intuición de la memorista.
+
+## Pregunta 4
+
+
+- Filtro de datos
+
+    Se filtran las instancias que tiene 45 o más nodos y se seleccionan las columnas con los mejores rendimientos registrados en formato ancho para los algoritmos A, B y C, luego se seleccionan de manera aleatoria muestras independientes de 23 instancias usando como semilla el valor 71.
+
+```{r}
+set.seed(71)
+
+nodos_4 <- datos %>% filter(n.nodos >= 45)
+
+best_times <- nodos_4 %>% select(mejor.A, mejor.B, mejor.C)
+best_times <- best_times %>% mutate_all(as.integer)
+
+indices <- sample(length(best_times$mejor.A), 23)
+
+bestA <- best_times$mejor.A[indices]
+bestB <- best_times$mejor.B[indices]
+bestC <- best_times$mejor.C[indices]
+
+best_times_sample <- c(bestA, bestB, bestC)
+
+interfaz <- c(rep("bestA", length(bestA)),
+                rep("bestB", length(bestB)),
+                rep("bestC", length(bestC)))
+
+instancias <- rep(1:23, 3)
+
+interfaz <- factor(interfaz)
+
+data <- data.frame(instancias, best_times_sample, interfaz)
+```
+
+-   Condiciones
+
+    Se puede notar que la manera de elegir las muestras es de manera aleatoria y entre sí son independientes. Además, la escala de medición es ordinal, ya que se está representando en porcentaje la cercanía con la solución óptima.
+    Por lo tanto, se puede hacer uso de la prueba de Friedman, la cual se basará en las siguientes hipótesis:
+
+-   Hipótesis
+
+    $$
+    H_{0}: \text{Las mejores soluciones encontradas por las versiones A, B y C del algoritmo tienen rendimientos iguales cuando las instancias tienen 45 o más nodos.}
+    $$
+
+    $$
+    H_{a}: \text{Al menos una de las mejores soluciones encontradas por las versiones A, B y C del algoritmo tienen rendimientos distintos cuando las instancias tienen 45 o más nodos.}
+    $$
+
+```{r}
+test <- friedman.test(best_times_sample ~ interfaz | instancias, data = data)
+print(test)
+```
+
+Se puede notar que el p-value dado por la prueba de Friedman es 0.002119, lo cual se encuentra por debajo del nivel de significancia propuesto, por lo que se rechaza la hipótesis nula en favor de la alternativa con un 95% de confianza. Por lo tanto, se concluye que al menos una de las mejores soluciones encontradas por las versiones A, B y C del algoritmo tienen rendimientos distintos cuando las instancias tienen 45 o más nodos y se debe hacer una prueba post hoc para determinar si la memorista está en lo correcto con su intuición de que todas son distintas.
+
+```{r}
+if(test$p.value < alpha){
+  post_hoc <- pairwise.wilcox.test(data$best_times_sample,
+                                   data$interfaz,
+                                   p.adjust.method = "holm",
+                                   paired = TRUE)
+  print(post_hoc)
+}
+
+
+```
+
+-   Condiciones
+
+    Debido a que la prueba post hoc entrega la matriz en donde se nos indica que solo entre las mejores soluciones encontradas para B y C no existe una diferencia significativa, por lo que la memorista está parcialmente en lo correcto con su intuición, ya que entre A-B y A-C si existe una diferencia significativa. Esto concluido con un 95% de confianza.
